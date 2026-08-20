@@ -16,99 +16,50 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
-public final class BlockJournalScreen
-        extends Screen {
+public final class BlockJournalScreen extends Screen {
 
-    private static final int ROW_HEIGHT =
-            24;
+    private static final int ROW_HEIGHT = 24;
 
-    private static final int BACKGROUND =
-            0xF20B0E14;
-
-    private static final int PANEL =
-            0xF2181D29;
-
-    private static final int SECONDARY =
-            0xF211151E;
-
-    private static final int ROW =
-            0xD9222937;
-
-    private static final int SELECTED =
-            0xFF38445C;
-
-    private static final int ACCENT =
-            0xFF72D6FF;
-
-    private static final int TEXT =
-            0xFFF2F3F7;
-
-    private static final int MUTED =
-            0xFFA8AFBD;
+    private static final int BACKGROUND = 0xF20B0E14;
+    private static final int PANEL = 0xF2181D29;
+    private static final int LEFT_PANEL = 0xF211151E;
+    private static final int ROW = 0xD9222937;
+    private static final int SELECTED = 0xFF38445C;
+    private static final int ACCENT = 0xFF72D6FF;
+    private static final int TEXT = 0xFFF2F3F7;
+    private static final int MUTED = 0xFFA8AFBD;
 
     private final BlockJournalPayload payload;
+    private final List<BlockJournalPayload.Entry> allEntries;
 
-    private final List<
-            BlockJournalPayload.Entry
-            > allEntries;
-
-    private List<
-            BlockJournalPayload.Entry
-            > filteredEntries;
-
-    private BlockJournalPayload.Entry
-            selected;
-
+    private List<BlockJournalPayload.Entry> filteredEntries;
+    private BlockJournalPayload.Entry selected;
     private EditBox searchBox;
-
     private int firstVisibleRow;
 
     public BlockJournalScreen(
             BlockJournalPayload payload
     ) {
-        super(
-                Component.literal(
-                        "Журнал блоков Randomizer"
-                )
-        );
-
-        this.payload =
-                payload;
-
-        this.allEntries =
-                List.copyOf(
-                        payload.entries()
-                );
-
-        this.filteredEntries =
-                this.allEntries;
+        super(Component.literal("Журнал блоков Randomizer"));
+        this.payload = payload;
+        this.allEntries = List.copyOf(payload.entries());
+        this.filteredEntries = this.allEntries;
     }
 
     @Override
     protected void init() {
-        searchBox =
-                new EditBox(
-                        this.font,
-                        left() + 12,
-                        top() + 38,
-                        listWidth() - 24,
-                        20,
-                        Component.literal(
-                                "Поиск блока"
-                        )
-                );
-
-        searchBox.setSuggestion(
-                "Поиск..."
+        searchBox = new EditBox(
+                font,
+                left() + 12,
+                top() + 36,
+                listWidth() - 24,
+                20,
+                Component.literal("Поиск блока")
         );
 
-        searchBox.setResponder(
-                this::filter
-        );
-
-        addRenderableWidget(
-                searchBox
-        );
+        searchBox.setSuggestion("Поиск...");
+        searchBox.setResponder(this::filter);
+        addRenderableWidget(searchBox);
 
         filter("");
     }
@@ -120,38 +71,20 @@ public final class BlockJournalScreen
             int mouseY,
             float partialTick
     ) {
-        graphics.fill(
-                0,
-                0,
-                width,
-                height,
-                BACKGROUND
-        );
+        /*
+         * ATM10/FancyMenu и некоторые другие клиентские моды
+         * могут применять blur во время стандартного Screen render.
+         *
+         * Поэтому сначала даём Screen выполнить свой проход,
+         * а уже ПОСЛЕ него рисуем наш интерфейс. SearchBox затем
+         * рисуется ещё раз поверх панели.
+         */
+        super.render(graphics, mouseX, mouseY, partialTick);
 
-        graphics.fill(
-                left(),
-                top(),
-                right(),
-                bottom(),
-                PANEL
-        );
-
-        graphics.fill(
-                left(),
-                top(),
-                right(),
-                top() + 2,
-                ACCENT
-        );
-
-        graphics.fill(
-                left(),
-                top(),
-                left() + listWidth(),
-                bottom(),
-                SECONDARY
-        );
-
+        graphics.fill(0, 0, width, height, BACKGROUND);
+        graphics.fill(left(), top(), right(), bottom(), PANEL);
+        graphics.fill(left(), top(), left() + listWidth(), bottom(), LEFT_PANEL);
+        graphics.fill(left(), top(), right(), top() + 2, ACCENT);
         graphics.fill(
                 left() + listWidth(),
                 top(),
@@ -162,96 +95,46 @@ public final class BlockJournalScreen
 
         graphics.drawCenteredString(
                 font,
-                Component.literal(
-                        "ЖУРНАЛ БЛОКОВ RANDOMIZER"
-                ),
+                Component.literal("ЖУРНАЛ БЛОКОВ RANDOMIZER"),
                 (left() + right()) / 2,
-                top() + 12,
+                top() + 11,
                 TEXT
         );
 
-        graphics.drawString(
-                font,
-                Component.literal(
-                        "Открыто блоков: "
-                                + allEntries.size()
-                ),
-                left()
-                        + listWidth()
-                        + 18,
-                top() + 42,
-                MUTED
-        );
+        renderList(graphics);
+        renderDetails(graphics);
+        renderScrollbar(graphics);
 
-        renderList(
-                graphics
-        );
-
-        renderDetails(
-                graphics
-        );
-
-        renderScrollbar(
-                graphics
-        );
-
-        super.render(
-                graphics,
-                mouseX,
-                mouseY,
-                partialTick
-        );
+        if (searchBox != null) {
+            searchBox.render(graphics, mouseX, mouseY, partialTick);
+        }
     }
 
     private void renderList(
             GuiGraphics graphics
     ) {
-        int visible =
-                visibleRows();
+        int visible = visibleRows();
+        int end = Math.min(
+                filteredEntries.size(),
+                firstVisibleRow + visible
+        );
 
-        int end =
-                Math.min(
-                        filteredEntries.size(),
-                        firstVisibleRow
-                                + visible
-                );
-
-        for (int index =
-                firstVisibleRow;
-             index < end;
-             index++) {
-
+        for (int index = firstVisibleRow; index < end; index++) {
             BlockJournalPayload.Entry entry =
-                    filteredEntries.get(
-                            index
-                    );
+                    filteredEntries.get(index);
 
-            int y =
-                    listTop()
-                            + (
-                            index
-                                    - firstVisibleRow
-                    )
-                            * ROW_HEIGHT;
+            int y = listTop()
+                    + (index - firstVisibleRow) * ROW_HEIGHT;
 
             graphics.fill(
                     left() + 8,
                     y,
-                    left()
-                            + listWidth()
-                            - 8,
-                    y
-                            + ROW_HEIGHT
-                            - 2,
-                    entry == selected
-                            ? SELECTED
-                            : ROW
+                    left() + listWidth() - 8,
+                    y + ROW_HEIGHT - 2,
+                    entry == selected ? SELECTED : ROW
             );
 
-            ItemStack icon =
-                    blockIcon(
-                            entry.blockId()
-                    );
+            ItemStack icon = blockIcon(entry.blockId());
 
             if (!icon.isEmpty()) {
                 graphics.renderItem(
@@ -261,18 +144,13 @@ public final class BlockJournalScreen
                 );
             }
 
-            String name =
-                    trim(
-                            blockName(
-                                    entry.blockId()
-                            ),
-                            listWidth() - 60
-                    );
-
             graphics.drawString(
                     font,
                     Component.literal(
-                            name
+                            trim(
+                                    blockName(entry.blockId()),
+                                    listWidth() - 62
+                            )
                     ),
                     left() + 34,
                     y + 8,
@@ -288,9 +166,8 @@ public final class BlockJournalScreen
                                     ? "Пока ничего не открыто"
                                     : "Ничего не найдено"
                     ),
-                    left()
-                            + listWidth() / 2,
-                    listTop() + 25,
+                    left() + listWidth() / 2,
+                    listTop() + 24,
                     MUTED
             );
         }
@@ -299,73 +176,58 @@ public final class BlockJournalScreen
     private void renderDetails(
             GuiGraphics graphics
     ) {
-        int x =
-                left()
-                        + listWidth()
-                        + 24;
+        int x = left() + listWidth() + 20;
+        int y = top() + 40;
+        int availableWidth = right() - x - 18;
 
-        int y =
-                top() + 80;
+        graphics.drawString(
+                font,
+                Component.literal(
+                        "Открыто блоков: " + allEntries.size()
+                ),
+                x,
+                y,
+                MUTED
+        );
+
+        y += 32;
 
         if (selected == null) {
             graphics.drawString(
                     font,
-                    Component.literal(
-                            "Выберите открытый блок."
-                    ),
+                    Component.literal("Выберите открытый блок."),
                     x,
                     y,
                     MUTED
             );
-
             return;
         }
 
-        String blockName =
-                blockName(
-                        selected.blockId()
-                );
-
-        String itemName =
-                itemName(
-                        selected.itemId()
-                );
-
-        ItemStack sourceIcon =
-                blockIcon(
-                        selected.blockId()
-                );
-
-        ItemStack targetIcon =
-                itemIcon(
-                        selected.itemId()
-                );
+        ItemStack sourceIcon = blockIcon(selected.blockId());
+        ItemStack targetIcon = itemIcon(selected.itemId());
 
         if (!sourceIcon.isEmpty()) {
-            graphics.renderItem(
-                    sourceIcon,
-                    x,
-                    y
-            );
+            graphics.renderItem(sourceIcon, x, y);
         }
 
         graphics.drawString(
                 font,
                 Component.literal(
-                        blockName
+                        trim(
+                                blockName(selected.blockId()),
+                                availableWidth - 26
+                        )
                 ),
                 x + 24,
                 y + 5,
                 TEXT
         );
 
-        y += 38;
+        y += 34;
 
         graphics.drawString(
                 font,
-                Component.literal(
-                        "Рандомизированный дроп"
-                ),
+                Component.literal("Рандомизированный дроп"),
                 x,
                 y,
                 MUTED
@@ -375,74 +237,71 @@ public final class BlockJournalScreen
 
         graphics.drawString(
                 font,
-                Component.literal(
-                        "↓"
-                ),
+                Component.literal("↓"),
                 x + 3,
                 y + 5,
                 ACCENT
         );
 
-        y += 25;
+        y += 24;
 
         if (!targetIcon.isEmpty()) {
-            graphics.renderItem(
-                    targetIcon,
-                    x,
-                    y
-            );
+            graphics.renderItem(targetIcon, x, y);
         }
 
         graphics.drawString(
                 font,
                 Component.literal(
-                        itemName
+                        trim(
+                                itemName(selected.itemId()),
+                                availableWidth - 26
+                        )
                 ),
                 x + 24,
                 y + 5,
                 ACCENT
         );
 
-        y += 46;
+        y += 38;
 
         graphics.drawString(
                 font,
-                Component.literal(
-                        "Block ID:"
-                ),
+                Component.literal("Block ID:"),
                 x,
                 y,
                 MUTED
         );
 
+        y += 13;
+
         graphics.drawString(
                 font,
                 Component.literal(
-                        selected.blockId()
+                        trim(selected.blockId(), availableWidth)
                 ),
-                x + 65,
+                x,
                 y,
                 0xFF7F8795
         );
 
-        y += 16;
+        y += 22;
 
         graphics.drawString(
                 font,
-                Component.literal(
-                        "Item ID:"
-                ),
+                Component.literal("Item ID:"),
                 x,
                 y,
                 MUTED
         );
 
+        y += 13;
+
         graphics.drawString(
                 font,
                 Component.literal(
-                        selected.itemId()
+                        trim(selected.itemId(), availableWidth)
                 ),
-                x + 65,
+                x,
                 y,
                 0xFF7F8795
         );
@@ -450,11 +309,10 @@ public final class BlockJournalScreen
         graphics.drawString(
                 font,
                 Component.literal(
-                        "Randomizer Seed: "
-                                + payload.masterSeed()
+                        "Randomizer Seed: " + payload.masterSeed()
                 ),
                 x,
-                bottom() - 24,
+                bottom() - 22,
                 0xFF606877
         );
     }
@@ -462,69 +320,43 @@ public final class BlockJournalScreen
     private void filter(
             String rawQuery
     ) {
-        String query =
-                rawQuery
-                        .strip()
-                        .toLowerCase(
-                                Locale.ROOT
-                        );
+        String query = rawQuery
+                .strip()
+                .toLowerCase(Locale.ROOT);
 
-        filteredEntries =
-                allEntries.stream()
-                        .filter(entry -> {
-                            String block =
-                                    blockName(
-                                            entry.blockId()
-                                    )
-                                            .toLowerCase(
-                                                    Locale.ROOT
-                                            );
+        filteredEntries = allEntries.stream()
+                .filter(entry -> {
+                    String block = blockName(entry.blockId())
+                            .toLowerCase(Locale.ROOT);
 
-                            String item =
-                                    itemName(
-                                            entry.itemId()
-                                    )
-                                            .toLowerCase(
-                                                    Locale.ROOT
-                                            );
+                    String item = itemName(entry.itemId())
+                            .toLowerCase(Locale.ROOT);
 
-                            return query.isEmpty()
-                                    || block.contains(
-                                    query
-                            )
-                                    || item.contains(
-                                    query
-                            )
-                                    || entry.blockId()
-                                    .toLowerCase(
-                                            Locale.ROOT
-                                    )
-                                    .contains(
-                                            query
-                                    );
-                        })
-                        .sorted(
-                                Comparator.comparing(
-                                        entry ->
-                                                blockName(
-                                                        entry.blockId()
-                                                ),
-                                        String.CASE_INSENSITIVE_ORDER
-                                )
+                    return query.isEmpty()
+                            || block.contains(query)
+                            || item.contains(query)
+                            || entry.blockId()
+                            .toLowerCase(Locale.ROOT)
+                            .contains(query)
+                            || entry.itemId()
+                            .toLowerCase(Locale.ROOT)
+                            .contains(query);
+                })
+                .sorted(
+                        Comparator.comparing(
+                                entry -> blockName(entry.blockId()),
+                                String.CASE_INSENSITIVE_ORDER
                         )
-                        .toList();
+                )
+                .toList();
 
         firstVisibleRow = 0;
 
         if (selected == null
-                || !filteredEntries
-                .contains(selected)) {
-
-            selected =
-                    filteredEntries.isEmpty()
-                            ? null
-                            : filteredEntries
-                            .getFirst();
+                || !filteredEntries.contains(selected)) {
+            selected = filteredEntries.isEmpty()
+                    ? null
+                    : filteredEntries.getFirst();
         }
     }
 
@@ -534,42 +366,19 @@ public final class BlockJournalScreen
             double mouseY,
             int button
     ) {
-        if (super.mouseClicked(
-                mouseX,
-                mouseY,
-                button
-        )) {
+        if (super.mouseClicked(mouseX, mouseY, button)) {
             return true;
         }
 
-        if (button != 0
-                || !insideList(
-                mouseX,
-                mouseY
-        )) {
-
+        if (button != 0 || !insideList(mouseX, mouseY)) {
             return false;
         }
 
-        int row =
-                (
-                        (int) mouseY
-                                - listTop()
-                )
-                        / ROW_HEIGHT;
+        int row = ((int) mouseY - listTop()) / ROW_HEIGHT;
+        int index = firstVisibleRow + row;
 
-        int index =
-                firstVisibleRow + row;
-
-        if (index >= 0
-                && index
-                < filteredEntries.size()) {
-
-            selected =
-                    filteredEntries.get(
-                            index
-                    );
-
+        if (index >= 0 && index < filteredEntries.size()) {
+            selected = filteredEntries.get(index);
             return true;
         }
 
@@ -583,10 +392,7 @@ public final class BlockJournalScreen
             double scrollX,
             double scrollY
     ) {
-        if (!insideList(
-                mouseX,
-                mouseY
-        )) {
+        if (!insideList(mouseX, mouseY)) {
             return super.mouseScrolled(
                     mouseX,
                     mouseY,
@@ -595,26 +401,21 @@ public final class BlockJournalScreen
             );
         }
 
-        int maximum =
-                Math.max(
-                        0,
-                        filteredEntries.size()
-                                - visibleRows()
-                );
+        int maximum = Math.max(
+                0,
+                filteredEntries.size() - visibleRows()
+        );
 
         if (scrollY > 0) {
-            firstVisibleRow =
-                    Math.max(
-                            0,
-                            firstVisibleRow - 1
-                    );
-
+            firstVisibleRow = Math.max(
+                    0,
+                    firstVisibleRow - 1
+            );
         } else if (scrollY < 0) {
-            firstVisibleRow =
-                    Math.min(
-                            maximum,
-                            firstVisibleRow + 1
-                    );
+            firstVisibleRow = Math.min(
+                    maximum,
+                    firstVisibleRow + 1
+            );
         }
 
         return true;
@@ -623,28 +424,16 @@ public final class BlockJournalScreen
     private void renderScrollbar(
             GuiGraphics graphics
     ) {
-        int visible =
-                visibleRows();
+        int visible = visibleRows();
 
-        if (filteredEntries.size()
-                <= visible) {
+        if (filteredEntries.size() <= visible) {
             return;
         }
 
-        int trackTop =
-                listTop();
-
-        int trackBottom =
-                bottom() - 10;
-
-        int trackHeight =
-                trackBottom
-                        - trackTop;
-
-        int x =
-                left()
-                        + listWidth()
-                        - 5;
+        int trackTop = listTop();
+        int trackBottom = bottom() - 10;
+        int trackHeight = trackBottom - trackTop;
+        int x = left() + listWidth() - 5;
 
         graphics.fill(
                 x,
@@ -654,36 +443,23 @@ public final class BlockJournalScreen
                 0xFF303747
         );
 
-        int thumbHeight =
-                Math.max(
-                        16,
-                        Math.round(
-                                trackHeight
-                                        * (
-                                        (float) visible
-                                                / filteredEntries
-                                                .size()
-                                )
-                        )
-                );
+        int thumbHeight = Math.max(
+                16,
+                Math.round(
+                        trackHeight
+                                * ((float) visible
+                                / filteredEntries.size())
+                )
+        );
 
-        int maxScroll =
-                filteredEntries.size()
-                        - visible;
+        int maxScroll = filteredEntries.size() - visible;
+        float position = maxScroll <= 0
+                ? 0.0F
+                : (float) firstVisibleRow / maxScroll;
 
-        float position =
-                maxScroll <= 0
-                        ? 0
-                        : (float) firstVisibleRow
-                        / maxScroll;
-
-        int thumbY =
-                trackTop
-                        + Math.round(
-                        (
-                                trackHeight
-                                        - thumbHeight
-                        )
+        int thumbY = trackTop
+                + Math.round(
+                        (trackHeight - thumbHeight)
                                 * position
                 );
 
@@ -700,114 +476,83 @@ public final class BlockJournalScreen
             double mouseX,
             double mouseY
     ) {
-        return mouseX
-                >= left() + 8
-                && mouseX
-                <= left()
-                + listWidth()
-                - 8
-                && mouseY
-                >= listTop()
-                && mouseY
-                <= bottom() - 10;
+        return mouseX >= left() + 8
+                && mouseX <= left() + listWidth() - 8
+                && mouseY >= listTop()
+                && mouseY <= bottom() - 10;
     }
 
     private int visibleRows() {
         return Math.max(
                 1,
-                (
-                        bottom()
-                                - 10
-                                - listTop()
-                )
-                        / ROW_HEIGHT
+                (bottom() - 10 - listTop()) / ROW_HEIGHT
         );
     }
 
     private String blockName(
             String rawId
     ) {
-        ResourceLocation id =
-                ResourceLocation
-                        .tryParse(rawId);
+        ResourceLocation id = ResourceLocation.tryParse(rawId);
 
         if (id == null) {
             return rawId;
         }
 
-        Block block =
-                BuiltInRegistries.BLOCK
-                        .get(id);
+        Block block = BuiltInRegistries.BLOCK.get(id);
 
         if (block == null) {
             return rawId;
         }
 
-        return block.getName()
-                .getString();
+        return block.getName().getString();
     }
 
     private String itemName(
             String rawId
     ) {
-        ResourceLocation id =
-                ResourceLocation
-                        .tryParse(rawId);
+        ResourceLocation id = ResourceLocation.tryParse(rawId);
 
         if (id == null) {
             return rawId;
         }
 
-        Item item =
-                BuiltInRegistries.ITEM
-                        .get(id);
+        Item item = BuiltInRegistries.ITEM.get(id);
 
         if (item == null) {
             return rawId;
         }
 
-        return item.getDescription()
-                .getString();
+        return item.getDescription().getString();
     }
 
     private ItemStack blockIcon(
             String rawId
     ) {
-        ResourceLocation id =
-                ResourceLocation
-                        .tryParse(rawId);
+        ResourceLocation id = ResourceLocation.tryParse(rawId);
 
         if (id == null) {
             return ItemStack.EMPTY;
         }
 
-        Block block =
-                BuiltInRegistries.BLOCK
-                        .get(id);
+        Block block = BuiltInRegistries.BLOCK.get(id);
 
         if (block == null) {
             return ItemStack.EMPTY;
         }
 
-        return new ItemStack(
-                block.asItem()
-        );
+        return new ItemStack(block.asItem());
     }
 
     private ItemStack itemIcon(
             String rawId
     ) {
-        ResourceLocation id =
-                ResourceLocation
-                        .tryParse(rawId);
+        ResourceLocation id = ResourceLocation.tryParse(rawId);
 
         if (id == null) {
             return ItemStack.EMPTY;
         }
 
-        Item item =
-                BuiltInRegistries.ITEM
-                        .get(id);
+        Item item = BuiltInRegistries.ITEM.get(id);
 
         if (item == null) {
             return ItemStack.EMPTY;
@@ -820,75 +565,47 @@ public final class BlockJournalScreen
             String value,
             int maximumWidth
     ) {
-        if (font.width(value)
-                <= maximumWidth) {
-
+        if (maximumWidth <= 0 || font.width(value) <= maximumWidth) {
             return value;
         }
 
-        String result =
-                value;
+        String suffix = "...";
+        int suffixWidth = font.width(suffix);
+        int allowed = Math.max(0, maximumWidth - suffixWidth);
+        String trimmed = font.plainSubstrByWidth(value, allowed);
 
-        while (result.length() > 1
-                && font.width(
-                result + "…"
-        ) > maximumWidth) {
-
-            result =
-                    result.substring(
-                            0,
-                            result.length() - 1
-                    );
-        }
-
-        return result + "…";
+        return trimmed + suffix;
     }
 
     private int windowWidth() {
-        return Math.max(
-                360,
-                Math.min(
-                        850,
-                        width - 24
-                )
-        );
+        return Math.max(360, Math.min(width - 24, 900));
+    }
+
+    private int windowHeight() {
+        return Math.max(260, Math.min(height - 24, 520));
     }
 
     private int left() {
-        return (
-                width - windowWidth()
-        ) / 2;
+        return (width - windowWidth()) / 2;
     }
 
     private int right() {
-        return left()
-                + windowWidth();
+        return left() + windowWidth();
     }
 
     private int top() {
-        return 16;
+        return (height - windowHeight()) / 2;
     }
 
     private int bottom() {
-        return height - 16;
+        return top() + windowHeight();
     }
 
     private int listWidth() {
-        return Math.min(
-                300,
-                Math.max(
-                        210,
-                        windowWidth() / 3
-                )
-        );
+        return Math.max(180, Math.min(330, windowWidth() * 2 / 5));
     }
 
     private int listTop() {
-        return top() + 68;
-    }
-
-    @Override
-    public boolean isPauseScreen() {
-        return false;
+        return top() + 66;
     }
 }
