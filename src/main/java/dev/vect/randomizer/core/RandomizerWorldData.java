@@ -32,6 +32,16 @@ public class RandomizerWorldData extends SavedData {
     private final Set<ResourceLocation> discoveredBlocks =
             new HashSet<>();
 
+    /*
+     * Блоки, которые Randomizer уже реально выдавал
+     * как результат случайного block drop.
+     *
+     * Только эти типы блоков разрешено забирать
+     * в исходном виде через Shift.
+     */
+    private final Set<ResourceLocation> unlockedShiftBlocks =
+            new HashSet<>();
+
     private final Set<ResourceLocation> discoveredMobs =
             new HashSet<>();
 
@@ -42,12 +52,6 @@ public class RandomizerWorldData extends SavedData {
         this.masterSeed = masterSeed;
     }
 
-    /*
-     * Вызывается только когда в мире ещё нет наших данных.
-     *
-     * Поэтому новый мир получает новый случайный seed,
-     * а существующий загружает старый из NBT.
-     */
     public static RandomizerWorldData create() {
         return new RandomizerWorldData(
                 RandomSource.create().nextLong()
@@ -63,33 +67,28 @@ public class RandomizerWorldData extends SavedData {
         if (tag.contains("MasterSeed", Tag.TAG_LONG)) {
             seed = tag.getLong("MasterSeed");
         } else {
-            // Совместимость с мирами,
-            // созданными до появления master seed.
             seed = RandomSource.create().nextLong();
         }
 
         RandomizerWorldData data =
                 new RandomizerWorldData(seed);
 
-        data.blockSalt =
-                tag.getLong("BlockSalt");
-
-        data.mobSalt =
-                tag.getLong("MobSalt");
-
-        data.recipeSalt =
-                tag.getLong("RecipeSalt");
-
-        data.fishingSalt =
-                tag.getLong("FishingSalt");
-
-        data.tradeSalt =
-                tag.getLong("TradeSalt");
+        data.blockSalt = tag.getLong("BlockSalt");
+        data.mobSalt = tag.getLong("MobSalt");
+        data.recipeSalt = tag.getLong("RecipeSalt");
+        data.fishingSalt = tag.getLong("FishingSalt");
+        data.tradeSalt = tag.getLong("TradeSalt");
 
         readLocationSet(
                 tag,
                 "DiscoveredBlocks",
                 data.discoveredBlocks
+        );
+
+        readLocationSet(
+                tag,
+                "UnlockedShiftBlocks",
+                data.unlockedShiftBlocks
         );
 
         readLocationSet(
@@ -119,10 +118,7 @@ public class RandomizerWorldData extends SavedData {
             int kills = entry.getInt("Kills");
 
             if (kills > 0) {
-                data.mobKills.put(
-                        entityId,
-                        kills
-                );
+                data.mobKills.put(entityId, kills);
             }
         }
 
@@ -134,40 +130,23 @@ public class RandomizerWorldData extends SavedData {
             CompoundTag tag,
             HolderLookup.Provider registries
     ) {
-        tag.putLong(
-                "MasterSeed",
-                masterSeed
-        );
-
-        tag.putLong(
-                "BlockSalt",
-                blockSalt
-        );
-
-        tag.putLong(
-                "MobSalt",
-                mobSalt
-        );
-
-        tag.putLong(
-                "RecipeSalt",
-                recipeSalt
-        );
-
-        tag.putLong(
-                "FishingSalt",
-                fishingSalt
-        );
-
-        tag.putLong(
-                "TradeSalt",
-                tradeSalt
-        );
+        tag.putLong("MasterSeed", masterSeed);
+        tag.putLong("BlockSalt", blockSalt);
+        tag.putLong("MobSalt", mobSalt);
+        tag.putLong("RecipeSalt", recipeSalt);
+        tag.putLong("FishingSalt", fishingSalt);
+        tag.putLong("TradeSalt", tradeSalt);
 
         writeLocationSet(
                 tag,
                 "DiscoveredBlocks",
                 discoveredBlocks
+        );
+
+        writeLocationSet(
+                tag,
+                "UnlockedShiftBlocks",
+                unlockedShiftBlocks
         );
 
         writeLocationSet(
@@ -188,26 +167,13 @@ public class RandomizerWorldData extends SavedData {
                         )
                 )
                 .forEach(entry -> {
-                    CompoundTag killTag =
-                            new CompoundTag();
-
-                    killTag.putString(
-                            "Id",
-                            entry.getKey().toString()
-                    );
-
-                    killTag.putInt(
-                            "Kills",
-                            entry.getValue()
-                    );
-
+                    CompoundTag killTag = new CompoundTag();
+                    killTag.putString("Id", entry.getKey().toString());
+                    killTag.putInt("Kills", entry.getValue());
                     killList.add(killTag);
                 });
 
-        tag.put(
-                "MobKills",
-                killList
-        );
+        tag.put("MobKills", killList);
 
         return tag;
     }
@@ -271,14 +237,34 @@ public class RandomizerWorldData extends SavedData {
     public boolean isBlockDiscovered(
             ResourceLocation blockId
     ) {
-        return discoveredBlocks.contains(
-                blockId
-        );
+        return discoveredBlocks.contains(blockId);
     }
 
-    public Set<ResourceLocation>
-    getDiscoveredBlocks() {
+    public Set<ResourceLocation> getDiscoveredBlocks() {
         return Set.copyOf(discoveredBlocks);
+    }
+
+    public boolean unlockShiftBlock(
+            ResourceLocation blockId
+    ) {
+        boolean changed =
+                unlockedShiftBlocks.add(blockId);
+
+        if (changed) {
+            setDirty();
+        }
+
+        return changed;
+    }
+
+    public boolean isShiftBlockUnlocked(
+            ResourceLocation blockId
+    ) {
+        return unlockedShiftBlocks.contains(blockId);
+    }
+
+    public Set<ResourceLocation> getUnlockedShiftBlocks() {
+        return Set.copyOf(unlockedShiftBlocks);
     }
 
     public boolean discoverMob(
@@ -297,13 +283,10 @@ public class RandomizerWorldData extends SavedData {
     public boolean isMobDiscovered(
             ResourceLocation entityId
     ) {
-        return discoveredMobs.contains(
-                entityId
-        );
+        return discoveredMobs.contains(entityId);
     }
 
-    public Set<ResourceLocation>
-    getDiscoveredMobs() {
+    public Set<ResourceLocation> getDiscoveredMobs() {
         return Set.copyOf(discoveredMobs);
     }
 
@@ -325,14 +308,10 @@ public class RandomizerWorldData extends SavedData {
     public int getMobKills(
             ResourceLocation entityId
     ) {
-        return mobKills.getOrDefault(
-                entityId,
-                0
-        );
+        return mobKills.getOrDefault(entityId, 0);
     }
 
-    public Map<ResourceLocation, Integer>
-    getMobKills() {
+    public Map<ResourceLocation, Integer> getMobKills() {
         return Map.copyOf(mobKills);
     }
 
@@ -346,6 +325,7 @@ public class RandomizerWorldData extends SavedData {
             case BLOCKS -> {
                 blockSalt = newSalt;
                 discoveredBlocks.clear();
+                unlockedShiftBlocks.clear();
             }
 
             case MOBS -> {
@@ -354,36 +334,23 @@ public class RandomizerWorldData extends SavedData {
                 mobKills.clear();
             }
 
-            case RECIPES ->
-                    recipeSalt = newSalt;
-
-            case FISHING ->
-                    fishingSalt = newSalt;
-
-            case TRADES ->
-                    tradeSalt = newSalt;
+            case RECIPES -> recipeSalt = newSalt;
+            case FISHING -> fishingSalt = newSalt;
+            case TRADES -> tradeSalt = newSalt;
         }
 
         setDirty();
     }
 
     public void rerollAll() {
-        blockSalt =
-                RandomSource.create().nextLong();
-
-        mobSalt =
-                RandomSource.create().nextLong();
-
-        recipeSalt =
-                RandomSource.create().nextLong();
-
-        fishingSalt =
-                RandomSource.create().nextLong();
-
-        tradeSalt =
-                RandomSource.create().nextLong();
+        blockSalt = RandomSource.create().nextLong();
+        mobSalt = RandomSource.create().nextLong();
+        recipeSalt = RandomSource.create().nextLong();
+        fishingSalt = RandomSource.create().nextLong();
+        tradeSalt = RandomSource.create().nextLong();
 
         discoveredBlocks.clear();
+        unlockedShiftBlocks.clear();
         discoveredMobs.clear();
         mobKills.clear();
 
@@ -400,6 +367,7 @@ public class RandomizerWorldData extends SavedData {
         tradeSalt = 0L;
 
         discoveredBlocks.clear();
+        unlockedShiftBlocks.clear();
         discoveredMobs.clear();
         mobKills.clear();
 
@@ -445,9 +413,6 @@ public class RandomizerWorldData extends SavedData {
                         )
                 );
 
-        tag.put(
-                key,
-                list
-        );
+        tag.put(key, list);
     }
 }
