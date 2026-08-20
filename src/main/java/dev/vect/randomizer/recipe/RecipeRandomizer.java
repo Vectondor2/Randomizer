@@ -11,7 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.CraftingInput;
+import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
@@ -64,14 +64,6 @@ public final class RecipeRandomizer {
                         RandomizerChannel.RECIPES
                 );
 
-        /*
-         * Берём рецепты через публичный API.
-         *
-         * Если они уже были рандомизированы,
-         * unwrap() вернёт исходную версию,
-         * поэтому wrapper внутри wrapper
-         * не появляется.
-         */
         List<RecipeHolder<?>> originals =
                 getOriginalRecipes(
                         manager
@@ -113,13 +105,16 @@ public final class RecipeRandomizer {
                     holder;
 
             if (replacement != null) {
-                finalHolder =
+                RecipeHolder<?> wrapped =
                         wrapCraftingRecipe(
                                 holder,
                                 replacement
                         );
 
-                randomized++;
+                if (wrapped != holder) {
+                    finalHolder = wrapped;
+                    randomized++;
+                }
             }
 
             finalRecipes.add(
@@ -127,13 +122,6 @@ public final class RecipeRandomizer {
             );
         }
 
-        /*
-         * NeoForge/Minecraft сам перестроит
-         * внутренние byType и byName.
-         *
-         * Нам больше не нужен прямой доступ
-         * к приватным полям RecipeManager.
-         */
         manager.replaceRecipes(
                 finalRecipes
         );
@@ -214,10 +202,6 @@ public final class RecipeRandomizer {
         for (RecipeHolder<?> holder :
                 recipes) {
 
-            /*
-             * Blacklisted recipe остаётся
-             * полностью оригинальным.
-             */
             if (RandomizerBlacklist
                     .isRecipeBlocked(
                             holder.id()
@@ -230,14 +214,18 @@ public final class RecipeRandomizer {
                     holder.value();
 
             /*
-             * Пока безопасно рандомизируем
-             * стандартный crafting type.
+             * Не достаточно просто объявить RecipeType.CRAFTING.
              *
-             * Остальные типы потом увидим
-             * в diagnostics.
+             * CraftingMenu, JEI и многие моды работают именно с
+             * CraftingRecipe и имеют право приводить holder.value()
+             * к этому интерфейсу.
+             *
+             * Поэтому оборачиваем только настоящие CraftingRecipe.
              */
             if (recipe.getType()
-                    != RecipeType.CRAFTING) {
+                    != RecipeType.CRAFTING
+                    || !(recipe
+                    instanceof CraftingRecipe craftingRecipe)) {
 
                 continue;
             }
@@ -246,7 +234,7 @@ public final class RecipeRandomizer {
 
             try {
                 result =
-                        recipe.getResultItem(
+                        craftingRecipe.getResultItem(
                                 registries
                         );
 
@@ -260,10 +248,6 @@ public final class RecipeRandomizer {
                 continue;
             }
 
-            /*
-             * Special/dynamic crafting recipes
-             * могут не иметь статического результата.
-             */
             if (result == null
                     || result.isEmpty()) {
 
@@ -293,9 +277,6 @@ public final class RecipeRandomizer {
             );
         }
 
-        /*
-         * Детерминированный порядок.
-         */
         candidates.sort(
                 (first, second) ->
                         first.id()
@@ -351,12 +332,6 @@ public final class RecipeRandomizer {
                         seed
                 );
 
-        /*
-         * Sattolo permutation.
-         *
-         * При N > 1 ни один рецепт
-         * не остаётся со своим результатом.
-         */
         for (int i =
                 donors.size() - 1;
              i > 0;
@@ -396,15 +371,21 @@ public final class RecipeRandomizer {
         );
     }
 
-    @SuppressWarnings("unchecked")
     private static RecipeHolder<?>
     wrapCraftingRecipe(
             RecipeHolder<?> holder,
             ItemStack replacement
     ) {
-        Recipe<CraftingInput> recipe =
-                (Recipe<CraftingInput>)
-                        holder.value();
+        if (!(holder.value()
+                instanceof CraftingRecipe recipe)) {
+
+            Randomizer.LOGGER.warn(
+                    "Recipe {} was selected for crafting randomization but is not a CraftingRecipe. Skipping it.",
+                    holder.id()
+            );
+
+            return holder;
+        }
 
         RandomizedCraftingRecipe randomized =
                 new RandomizedCraftingRecipe(
